@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Convection Current Simulation</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            background: #1B2A4A;
+            font-family: Arial, sans-serif;
+            padding: 10px;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 8px;
+        }
+        .header h1 {
+            font-size: 26px;
+            color: #FFF5E1;
+            margin-bottom: 3px;
+        }
+        .header p {
+            font-size: 16px;
+            color: #ccc;
+        }
+        canvas {
+            border: 6px solid #666;
+            background: white;
+        }
+        .controls {
+            margin-top: 8px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        button {
+            padding: 7px 14px;
+            font-size: 14px;
+            cursor: pointer;
+            background: #6B3A2A;
+            color: white;
+            border: none;
+            border-radius: 5px;
+        }
+        button:hover {
+            background: #5A3023;
+        }
+        #status {
+            font-size: 13px;
+            color: #FFF5E1;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Convection Current Simulation</h1>
+        <p>Red = hot | Blue = cold. Observe the particle movement. What patterns do you notice?</p>
+    </div>
+    <canvas id="canvas" width="800" height="400"></canvas>
+    <div class="controls">
+        <button onclick="toggleHeat()">Toggle Heat</button>
+        <button onclick="toggleHeatLevel()" id="heatLevelBtn">Switch to Low Heat</button>
+        <button onclick="reset()">Reset</button>
+        <span id="status">Heat: ON | Temperature: HIGH</span>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        let heatOn = true;
+        let heatLevel = 'high';
+        let particles = [];
+        const numParticles = 400;
+        const centerX = canvas.width / 2;
+        const heatRadius = 100;
+        
+        class Particle {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.vx = 0;
+                this.vy = 0;
+                this.temp = 0;
+                this.radius = 5;
+            }
+            
+            update() {
+                const distFromCenterX = Math.abs(this.x - centerX);
+                const distFromBottom = canvas.height - this.y;
+                
+                if (heatOn && distFromBottom < 60 && distFromCenterX < heatRadius) {
+                    const heatStrength = (1 - distFromCenterX / heatRadius) * (1 - distFromBottom / 60);
+                    const heatMultiplier = heatLevel === 'high' ? 0.1 : 0.04;
+                    this.temp = Math.min(1, this.temp + heatStrength * heatMultiplier);
+                }
+                
+                const coolRate = 0.001 + (Math.abs(distFromCenterX) / canvas.width) * 0.004;
+                this.temp = Math.max(0, this.temp - coolRate);
+                
+                if (this.y < 100) {
+                    this.temp = Math.max(0, this.temp - 0.008);
+                }
+                
+                const buoyancy = (this.temp - 0.25) * 0.18;
+                this.vy -= buoyancy;
+                
+                this.vx += (Math.random() - 0.5) * 0.8;
+                this.vy += (Math.random() - 0.5) * 0.8;
+                
+                const distToCenterX = this.x - centerX;
+                const normalizedHeight = this.y / canvas.height;
+                
+                if (this.y < canvas.height * 0.4) {
+                    const topPush = (1 - normalizedHeight / 0.4) * 0.06;
+                    if (distToCenterX < 0) {
+                        this.vx -= topPush;
+                    } else {
+                        this.vx += topPush;
+                    }
+                }
+                
+                if (Math.abs(distToCenterX) > 130) {
+                    this.vy += 0.018 * (1 - this.temp);
+                }
+                
+                if (this.y > canvas.height * 0.7 && Math.abs(distToCenterX) > 40) {
+                    const bottomPull = 0.024;
+                    if (distToCenterX < 0) {
+                        this.vx += bottomPull;
+                    } else {
+                        this.vx -= bottomPull;
+                    }
+                }
+                
+                this.vx *= 0.96;
+                this.vy *= 0.96;
+                
+                const maxSpeed = 2.5;
+                this.vx = Math.max(-maxSpeed, Math.min(maxSpeed, this.vx));
+                this.vy = Math.max(-maxSpeed, Math.min(maxSpeed, this.vy));
+                
+                this.x += this.vx;
+                this.y += this.vy;
+                
+                if (this.x < 0) this.x = canvas.width;
+                if (this.x > canvas.width) this.x = 0;
+                
+                if (this.y < this.radius) {
+                    this.y = this.radius;
+                    this.vy = 0;
+                }
+                if (this.y > canvas.height - this.radius) {
+                    this.y = canvas.height - this.radius;
+                    this.vy = 0;
+                }
+            }
+            
+            draw() {
+                const temp = Math.max(0, Math.min(1, this.temp));
+                const r = Math.floor(255 * temp);
+                const g = 0;
+                const b = Math.floor(255 * (1 - temp));
+                
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+                ctx.fill();
+            }
+        }
+        
+        function init() {
+            particles = [];
+            for (let i = 0; i < numParticles; i++) {
+                const x = Math.random() * canvas.width;
+                const y = Math.random() * canvas.height;
+                const p = new Particle(x, y);
+                p.temp = Math.random() * 0.6 + 0.2;
+                particles.push(p);
+            }
+        }
+        
+        function animate() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            if (heatOn) {
+                const gradient = ctx.createRadialGradient(
+                    centerX, canvas.height, 0,
+                    centerX, canvas.height, heatRadius
+                );
+                gradient.addColorStop(0, 'rgba(255, 100, 0, 0.4)');
+                gradient.addColorStop(1, 'rgba(255, 100, 0, 0)');
+                ctx.fillStyle = gradient;
+                ctx.fillRect(centerX - heatRadius, canvas.height - 70, heatRadius * 2, 70);
+                
+                ctx.beginPath();
+                ctx.moveTo(centerX, canvas.height);
+                ctx.bezierCurveTo(
+                    centerX - 20, canvas.height - 40,
+                    centerX + 20, canvas.height - 40,
+                    centerX, canvas.height - 70
+                );
+                ctx.fillStyle = 'rgba(255, 100, 50, 0.5)';
+                ctx.fill();
+            }
+            
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+            
+            requestAnimationFrame(animate);
+        }
+        
+        function toggleHeat() {
+            heatOn = !heatOn;
+            updateStatus();
+        }
+        
+        function toggleHeatLevel() {
+            heatLevel = heatLevel === 'high' ? 'low' : 'high';
+            document.getElementById('heatLevelBtn').textContent = heatLevel === 'high' ? 'Switch to Low Heat' : 'Switch to High Heat';
+            updateStatus();
+        }
+        
+        function updateStatus() {
+            document.getElementById('status').textContent = 
+                'Heat: ' + (heatOn ? 'ON' : 'OFF') + ' | Temperature: ' + heatLevel.toUpperCase();
+        }
+        
+        function reset() {
+            init();
+        }
+        
+        init();
+        animate();
+    </script>
+</body>
+</html>
